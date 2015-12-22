@@ -318,5 +318,45 @@ In no particular order, and possibly not comprehensively:
 * https://www.raspberrypi.org/forums/viewtopic.php?f=9&t=1970
 * http://open.konspyre.org/blog/2012/10/18/raspberry-flavored-time-a-ntp-server-on-your-pi-tethered-to-a-gps-unit/
 
+### Enable SAMBA support
+
+Share NTP statistics files via Samba (Windows network shares).
+
+````
+pi@ntp:~ $ sudo apt-get install samba samba-common-bin -y
+... lots of output ...
+pi@ntp:~ $ sudo nano /etc/samba/smb.conf
+````
+````
+...
+
+[data]
+   browseable = yes
+   comment = Data directory
+   create mask = 0700
+   directory mask = 0700
+   only guest = yes
+   path = /home/pi
+   public = yes
+   read only = yes
+
+...comment the rest out: printers, etc...
+````
+````
+pi@ntp:~ $ # sudo service samba restart failed
+pi@ntp:~ $ sudo /etc/init.d/samba restart
+[ ok ] Restarting nmbd (via systemctl): nmbd.service.
+[ ok ] Restarting smbd (via systemctl): smbd.service.
+[ ok ] Restarting samba-ad-dc (via systemctl): samba-ad-dc.service.
+````
+
+This results in a public, read-only share which can be automatically
+discovered. (Note: hidden files are exposed too but have the hidden
+attribute correctly set.)
+
+* http://elinux.org/R-Pi_NAS
+* https://www.raspberrypi.org/forums/viewtopic.php?p=107253
+
+
 
 
