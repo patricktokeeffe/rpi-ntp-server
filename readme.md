@@ -2,7 +2,7 @@
 Rasbian NTP Server
 ==================
 
-Setup guide for a Raspberry Pi-based NTP server. 
+Setup guide for a Stratum 1 NTP server using GPS receiver & Raspberry Pi.
 
 ### Materials
 
@@ -21,9 +21,7 @@ required for setup (i.e. keyboard, mouse, monitor).
     * [Adafruit 1.2" 4-Digit 7-Segment Display w/I2C Backpack - Red](https://www.adafruit.com/product/1270)
     * [Adafruit 0.56" 4-Digit 7-Segment Display w/I2C Backpack - Red](https://www.adafruit.com/product/878)
 
-### Setup
-
-#### Assembly
+### Assembly
 
 This diagram applies to the newer Pi Model 3 B+, and the original hardware
 used for this project, the Pi Model 1 B+:
@@ -33,14 +31,15 @@ used for this project, the Pi Model 1 B+:
 **TODO** add diagram for clock display components, and include
 usage of prototyping board
 
-
-#### O/S Setup
+### Software Setup
 
 > Previously, this project used `ntpd` on *Raspbian Jessie*. Instructions
 > are still provided for reference purposes [here](raspbian-jessie.md).
 
 The latest version of this project is based on [Ubuntu Mate 16.04 LTS](ubuntu-mate.org)
 with `chrony` and `gpsd`.
+
+#### Enable serial port
 
 The stock configuration for Raspberry Pi Model 3 B+ hardware is to present a login over
 the hardware serial port, and to use the hardware uart to support Bluetooth connections
@@ -125,10 +124,8 @@ sudo crontab -e
 
 #### Remove DHCP hook
 
-> TODO: determine if still relevant - wasn't it for ntp?
-
-To prevent the Pi from getting NTP configuration from the router, 
-remove `ntp-servers` from the end of the `request` block:
+To prevent the Pi from getting NTP configuration from any DHCP
+servers, remove `ntp-servers` from the end of the `request` block:
 ```
 sudo nano /etc/dhcp/dhclient.conf
 ```
@@ -176,16 +173,23 @@ sudo apt-get install chrony -y
 ```
 
 And configure for use with GPS device:
-> **TODO** May need to rebuild chrony to include PPS support
-
 ```
 sudo nano /etc/chrony/chrony.conf
 ```
 ```diff
-+refclock SHM 0 offset 0 delay delay 0 refid GPS noselect
++refclock SHM 0 offset 0 delay 0 refid GPS noselect
 +refclock PPS /dev/pps0 lock GPS refid GPPS
  pool 2.debian.pool.ntp.org offline iburst
 ```
+
+> From the [`chrony.conf` docs](https://chrony.tuxfamily.org/doc/3.4/chrony.conf.html):
+> * `refclock` specifies a hardware reference clock
+>     * `SHM` is the shared memory driver, which is utilized by *gpsd*
+>     * `PPS` is for pulse-per-second signals, read from `/dev/pps0`
+> * `lock` is used to link PPS samples to another *refclock*
+> * `noselect` is an optional flag used to signal the GPS shouldn't be used directly
+> * `refid` is the tracking label, "GPPS" indicates a PPS-enabled GPS source
+> * `offset` and `delay` are values which will be tuned after running overnight
 
 At this point, test the time synchronization using:
 * `chronyc tracking`
@@ -193,14 +197,36 @@ At this point, test the time synchronization using:
 * `chronyc sourcestats -v`
 
 If necessary, apply a step-change to system clock:
-> The `-a` argument is required in older versions to prevent an error.
+> The `-a` argument is required in older versions of *chronyc* to prevent an error.
 
 ```
 sudo chronyc -a makestep
 ```
- 
+
+Immediately after starting, the sources may not provide a good
+time signal:
+
+![Tracking data during initial warm-up](images/chronyc-tracking-initial.png)
+
+After running overnight, with a good GPS signal, you should
+obtain a lock to the *GPPS* refclock:
+
+![Tracking data from the next morning](images/chronyc-tracking-warm.png)
 
 
+#### Fine Tuning
+
+After warming up, the **GPS** refclock showed an **Offset** value
+consistently between 400-500ms, generally on the higher end. 
+This value can be incorporated directly to improve the source:
+```
+sudo nano /etc/chrony/chrony.conf
+```
+```diff
+-refclock SHM 0 offset 0 delay 0 refid GPS noselect
++refclock SHM 0 offset 0 delay 0.5 refid GPS noselect
+ refclock PPS /dev/pps0 lock GPS refid GPPS
+```
 
 
 ### References
