@@ -3,28 +3,19 @@ Rasbian NTP Server
 
 Setup guide for a Raspberry Pi-based NTP server. 
 
-### Bill of materials
+### Materials
 
 Substitutions may apply. Your mileage may vary. Additional equipment
 required for setup (i.e. keyboard, mouse, monitor).
 
-| Description                                              | $USD (est) |
-|----------------------------------------------------------|------------|
-| [Raspberry Pi Model 1 B+][bom0]                          |        30  |
-| [Adafruit Ultimate GPS Breakout version 3][bom1]         |        40  |
-| [CR1220 Lithium Coin Cell Battery 3V][bom2]              |         1  |
-| [SMA to uFL/u.FL/IPX/IPEX RF Adapter Cable][bom3]        |         4  |
-| [GPS Antenna, External, Active, 3-5V 28dB 5m SMA][bom4]  |        13  |
-| [4GB SD Card (w/ Rasbian Jessie Lite)][bom5]             |        10  |
-| cheap boxy case                                          |         8  |
-|                                                  *Total* |       106  |
-
-  [bom0]: https://www.adafruit.com/products/1914
-  [bom1]: https://www.adafruit.com/products/746
-  [bom2]: https://www.adafruit.com/products/380
-  [bom3]: https://www.adafruit.com/products/851
-  [bom4]: https://www.adafruit.com/products/960
-  [bom5]: https://www.adafruit.com/products/2820
+* Raspberry Pi (Pi Zero not recommended)
+    * a quality micro SD card (class 10 recommended)
+    * a quality power supply
+    * a case (to protect, and dampen temperature fluctuations)
+* [Adafruit Ultimate GPS Breakout version 3](https://www.adafruit.com/products/746)
+    * CR1220 Lithium Coin Cell Battery 3V
+    * SMA to uFL/u.FL/IPX/IPEX RF Adapter Cable
+    * GPS Antenna, External, Active, 3-5V 28dB 5m SMA
 
 ### Setup
 
@@ -34,59 +25,22 @@ required for setup (i.e. keyboard, mouse, monitor).
 
 #### SD Card Prep
 
-This project is based on [Raspbian Jessie Lite][url-rpidl] (2015-11-21). 
-The Lite distribution is more appropriate for embedded systems, which also 
-means it doesn't have a graphical system -- command line only.
+This project is based on [Raspbian Jessie Lite](https://www.raspberrypi.org/downloads/raspbian/),
+release date Nov 21, 2015. The Lite distribution is more appropriate for
+an embedded system because it doesn't have a graphical desktop.
 
-If using a blank/used SD card, use your preferred [install method][url-imgin]
-to write the image. A Linux user could do as follows, assuming the image has
-been downloaded into `~/Downloads`, then unzipped; *and* the SD card is 
-unmounted and has a device address of `/dev/sdb`:
-
-````
-user@comp:~$ ls Downloads
-2015-11-21-raspbian-jessie-lite.img
-2015-11-21-raspbian-jessie-lite.zip
-user@comp:~$ sudo dd bs=4M if=Downloads/2015-11-21-raspbian-jessie-lite.img of=/dev/sdb
-user@comp:~$ sudo sync
-````
-
-  [url-rpidl]: https://www.raspberrypi.org/downloads/raspbian/
-  [url-imgin]: https://www.raspberrypi.org/documentation/installation/installing-images/README.md
-
-#### Initial OS Setup
-
-Run `sudo raspi-config` after logging in (`pi`/`raspberry`) to start the
-initial setup utility.
-
-> *If you have already connected the GPS to the Pi, you may see horrible
-> errors covering your screen after boot. Try pressing 'Enter' several
-> times to get a visible login prompt.*
-
-* Expand the file system
-    * Yes
-* Internationalization
-    * Set your preferred locale (we use `en_US.UTF-8`)
-    * Set your time zone (we use `GMT+8` for Pacific Standard Time year-round;
-      the inverted sign (+8) is a POSIX quirk)
-    * Set your keyboard (we use US English)
-* Overclock
-    * 800 Mhz (modest)
-    * (or don't, it's not required)
-* Advanced Options
-    * Set the hostname (say, `ntpi`)
-    * Enable SSH (if you use it)
-    * Enable Device Tree (yes, for pulse-per-second support)
-    * Disable serial shell/kernel messages (to repurpose UART for the GPS)
-* Exit saving changes and reboot
+With a prepared SD card, preform initial OS configuration as necessary.
+Then, use `raspi-config` to set the following under *Advanced Options*:
+* Enable Device Tree (for pulse-per-second support)
+* Disable serial shell/kernel messages (to repurpose UART for the GPS)
 
 Next fetch and apply system updates:
-
 ````
-pi@ntp:~ $ sudo apt-get update
-pi@ntp:~ $ sudo apt-get upgrade
-pi@ntp:~ $ sudo apt-get dist-upgrade # I actually skip this     FIXME
-pi@ntp:~ $ sudo rpi-update # I don't do this either             FIXME
+sudo apt-get update
+sudo apt-get dist-upgrade -y
+````
+````
+sudo reboot
 ````
 
 #### Install Packages
@@ -100,7 +54,7 @@ but not any GPS-related utilities (gpsd, ..) because NTP will listen to the
 GPS receiver directly. 
 
 ````
-pi@ntp:~ $ sudo apt-get install pps-tools libcap-dev libssl-dev
+sudo apt-get install pps-tools libcap-dev libssl-dev
 ````
 
 #### Enable Kernel Modules
@@ -109,34 +63,24 @@ The GPS receiver provides a pulse-per-second (PPS) signal for enhanced
 precision. In early 2015, kernel support for PPS via GPIO pins was added
 and with Device Tree in Raspbian Jessie, PPS is pretty smoothly integrated.
 Just add the overlay statement to `/boot/config.txt`:
-
 ````
-pi@ntp:~ $ sudo nano /boot/config.txt
+sudo nano /boot/config.txt
+````
+````diff
+ ...
++## pps-gpio
++##     Enable kernel support for GPS receiver pulse-per-second (PPS) input
++dtoverlay=pps-gpio
 ````
 ````
-...
-dtoverlay=pps-gpio
+sudo reboot
 ````
 
 By default, this enables PPS support on GPIO (BCM) 18 and creates a
 device `/dev/pps0`. If you want to use a different pin, use the `gpiopin`
-argument and the Broadcom (GPIO) [pin number][url-pinout]:
-
-  [url-pinout]: http://pinout.xyz
-
+argument and Broadcom (GPIO) [pin number](http://pinout.xyz) (for example):
 ````
-...
 dtoverlay=pps-gpio,gpiopin=23
-````
-
-> You could alternately enable PPS support by adding this text to
-> `/boot/cmdline.txt`. We picked `/boot/config.txt` for the extra 
-> breathing room :D -- choose one or the other.
-
-#### Reboot
-
-````
-pi@ntp:~ $ sudo reboot
 ````
 
 #### Test PPS Support
@@ -146,7 +90,9 @@ do, ensure the GPS has signal lock (slow ~15sec LED flashes) because it
 won't provide a PPS signal without full lock.
 
 ````
-pi@ntp:~ $ sudo ppstest /dev/pps0
+sudo ppstest /dev/pps0
+````
+````
 trying PPS source "/dev/pps0"
 found PPS source "/dev/pps0"
 ok, found 1 source(s), now start fetching data...
@@ -158,9 +104,10 @@ source 0 - assert 1450338136.999994489, sequence: 97364 - clear 0.0000000000, se
 #### Symlink GPS
 
 The NTP driver expects to listen to `/dev/gps0` and `/dev/gpspps0` so we
-create permanent symlinks with some udev rules. These rules go into a new
-text file: `sudo nano /etc/udev/rules.d/10-pps.rules`
-
+create permanent symlinks with some udev rules. 
+````
+sudo nano /etc/udev/rules.d/10-pps.rules
+````
 ````
 KERNEL=="ttyAMA0", SUBSYSTEM=="tty", GROUP="dialout", MODE="0660", SYMLINK+="gps0"
 KERNEL=="pps0", SUBSYSTEM=="pps", GROUP="dialout", MODE="0660", SYMLINK+="gpspps0"
@@ -177,14 +124,12 @@ The Adafruit Ultimate GPS Breakout v3 sends 5 NMEA sentences by default. These
 extra sentences introduce unnecessary processing and increase jitter. 
 
 To disable all but the Recommended Minimum GPS data sentence (GPRMC), issue the 
-`PMTK314` command as described in the [command packet][url-pmtk] (pg 12). 
-(You will need a [checksum calculator][url-chksm] to construct the command.)
-
-  [url-pmtk]: https://www.adafruit.com/datasheets/PMTK%20command%20packet-Complete-C39-A01.pdf
-  [url-chksm]: http://www.hhhh.org/wiml/proj/nmeaxor.html
-
-Run `sudo crontab -e`, add this line and reboot:
-
+`PMTK314` command as described in the 
+[command packet](https://www.adafruit.com/datasheets/PMTK%20command%20packet-Complete-C39-A01.pdf)
+(pg 12). 
+````
+sudo crontab -e
+````
 ````
 @reboot echo -e '$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n' > /dev/gps0
 ````
@@ -192,15 +137,17 @@ Run `sudo crontab -e`, add this line and reboot:
 #### Remove DHCP Hook
 
 To prevent the Pi from getting NTP configuration from the router, 
-remove `ntp-servers` from the end of the `request` block in the 
-file `/etc/dhcp/dhclient.conf`:
-
+remove `ntp-servers` from the end of the `request` block:
 ````
-...
-request subnet-mask, broadcast-address, time-offset, routers,
-        ...
-        rfc3442-classless-static-routes; # removed ntp-servers
-...
+sudo nano /etc/dhcp/dhclient.conf
+````
+````diff
+ ...
+ request subnet-mask, broadcast-address, time-offset, routers,
+         ...
+-        rfc3442-classless-static-routes, ntp-servers;
++        rfc3442-classless-static-routes;
+ ...
 ````
 
 #### Rebuild NTP
@@ -210,18 +157,20 @@ PPS support. It's easy enough to download the latest version and build it.
 Start by getting the required libraries:
 
 ````
-pi@ntp:~ $ sudo apt-get install libcap-dev libssl-dev
+sudo apt-get install libcap-dev libssl-dev
 ````
 
 Then download the [latest version of NTP](http://archive.ntp.org/ntp4/ntp-4.2)
-and unzip it. (At I write this, it's 4.2.8p4) 
+and unzip it. (At I write this, it's 4.2.8p4 - editor's note: as of Jan 29, 2019
+latest version is 4.2.8p12) 
 
 ````
-pi@ntp:~ $ wget http://archive.ntp.org/ntp4/ntp-4.2/ntp-4.2.8p4.tar.gz
-pi@ntp:~ $ tar xvzf ntp-4.2.8p4.tar.gz
+wget http://archive.ntp.org/ntp4/ntp-4.2/ntp-4.2.8p4.tar.gz
+tar xvzf ntp-4.2.8p4.tar.gz
 ... lots of output...
-pi@ntp:~ $ cd ntp-4.2.8p4
-pi@ntp:~/ntp-4.2.8p4 $
+````
+````
+cd ntp-4.2.8p4
 ````
 
 These first two next steps take roughly 10 and 20 minutes to complete,
@@ -230,22 +179,28 @@ is finished, the new NTP executables are installed (for your user), the
 system NTP is stopped and then we copy the newly built versions over it.
 
 ````
-pi@ntp:~/ntp-4.2.8p4 $ ./configure --enable-linuxcaps
-...
-pi@ntp:~/ntp-4.2.8p4 $ make
-...
-pi@ntp:~/ntp-4.2.8p4 $ sudo make install
-...
-pi@ntp:~/ntp-4.2.8p4 $ sudo service ntp stop
-pi@ntp:~/ntp-4.2.8p4 $ sudo cp /usr/local/bin/ntp* /usr/bin/
-pi@ntp:~/ntp-4.2.8p4 $ sudo cp /usr/local/sbin/ntp* /usr/sbin/
+./configure --enable-linuxcaps
+...lots of output...
+````
+````
+make
+...lots of output...
+````
+````
+sudo make install
+...lots of output...
+````
+````
+sudo service ntp stop
+sudo cp /usr/local/bin/ntp* /usr/bin/
+sudo cp /usr/local/sbin/ntp* /usr/sbin/
 ````
 
 To check that things are working, reboot and look over the boot-up output
 for warnings or errors from NTP. Then login and check the running version:
 
 ````
-pi@ntp:~ $ ntpq --version
+ntpq --version
 ntpq 4.2.8p4@1.3265 Tue Dec 15 17:42:50 UTC 2015 (1)
 ````
 
@@ -277,6 +232,10 @@ These flags are not required because you use the default values:
   *Linux PPS expects ntpd clock discipline, not kernel (hardpps)
   discipline [2013-10-16 19:24][url-ppsd]*
 
+  [url-nmea20]: https://www.eecis.udel.edu/~mills/ntp/html/drivers/driver20.html
+  [url-ppse]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
+  [url-ppsd]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
+
 NTP requires multiple servers to determine the time and recognize bad clocks.
 Your file should specify a few other sources, optionally with the `iburst`
 argument to speed up initialization (recommended). This argument isn't
@@ -290,10 +249,6 @@ server 1.us.pool.ntp.org
 server 2.us.pool.ntp.org
 server 3.us.pool.ntp.org
 ````
-
-  [url-nmea20]: https://www.eecis.udel.edu/~mills/ntp/html/drivers/driver20.html
-  [url-ppse]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
-  [url-ppsd]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
 
 ### Further Tuning
 
@@ -323,28 +278,27 @@ In no particular order, and possibly not comprehensively:
 Share NTP statistics files via Samba (Windows network shares).
 
 ````
-pi@ntp:~ $ sudo apt-get install samba samba-common-bin -y
-... lots of output ...
-pi@ntp:~ $ sudo nano /etc/samba/smb.conf
+sudo apt-get install samba samba-common-bin -y
 ````
 ````
-...
-
-[data]
-   browseable = yes
-   comment = Data directory
-   create mask = 0700
-   directory mask = 0700
-   only guest = yes
-   path = /home/pi
-   public = yes
-   read only = yes
+sudo nano /etc/samba/smb.conf
+````
+````diff
+ ...
++[data]
++   browseable = yes
++   comment = Data directory
++   create mask = 0700
++   directory mask = 0700
++   only guest = yes
++   path = /home/pi
++   public = yes
++   read only = yes
 
 ...comment the rest out: printers, etc...
 ````
 ````
-pi@ntp:~ $ # sudo service samba restart failed
-pi@ntp:~ $ sudo /etc/init.d/samba restart
+sudo /etc/init.d/samba restart
 [ ok ] Restarting nmbd (via systemctl): nmbd.service.
 [ ok ] Restarting smbd (via systemctl): smbd.service.
 [ ok ] Restarting samba-ad-dc (via systemctl): samba-ad-dc.service.
