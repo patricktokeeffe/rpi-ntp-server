@@ -238,3 +238,59 @@ performance. To enable, add to new lines in `/boot/config.txt`.
 * `smsc95xx.turbo_mode=0` Reduces Ethernet latency by doing something to
   decouple it from the USB
 
+
+### References
+
+This project is hugely indebted to a handful of well-treaded resources.
+In no particular order, and possibly not comprehensively:
+
+* http://www.satsignal.eu/ntp/RaspberryPi-notes.html#JorgeAmaralThoughts
+* http://www.satsignal.eu/ntp/Raspberry-Pi-NTP.html#compile-ntp
+* http://www.satsignal.eu/ntp/Raspberry-Pi-quickstart.html
+* http://www.satsignal.eu/ntp/Raspberry_Time%20-%20Broadband%20Ham%20Net.pdf
+* http://linuxpps.org/wiki/index.php/LinuxPPS_NTPD_support
+* https://www.eecis.udel.edu/~mills/ntp/html/refclock.html
+* https://www.raspberrypi.org/forums/viewtopic.php?f=9&t=1970
+* http://open.konspyre.org/blog/2012/10/18/raspberry-flavored-time-a-ntp-server-on-your-pi-tethered-to-a-gps-unit/
+
+
+### Enable SAMBA support
+
+Share NTP statistics files via Samba (Windows network shares).
+
+````
+sudo apt-get install samba samba-common-bin -y
+````
+````
+sudo nano /etc/samba/smb.conf
+````
+````diff
+ ...
++[data]
++   browseable = yes
++   comment = Data directory
++   create mask = 0700
++   directory mask = 0700
++   only guest = yes
++   path = /home/pi
++   public = yes
++   read only = yes
+
+...comment the rest out: printers, etc...
+````
+````
+sudo /etc/init.d/samba restart
+[ ok ] Restarting nmbd (via systemctl): nmbd.service.
+[ ok ] Restarting smbd (via systemctl): smbd.service.
+[ ok ] Restarting samba-ad-dc (via systemctl): samba-ad-dc.service.
+````
+
+This results in a public, read-only share which can be automatically
+discovered. (Note: hidden files are exposed too but have the hidden
+attribute correctly set.)
+
+* http://elinux.org/R-Pi_NAS
+* https://www.raspberrypi.org/forums/viewtopic.php?p=107253
+
+
+
