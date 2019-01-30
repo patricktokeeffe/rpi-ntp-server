@@ -1,3 +1,4 @@
+
 Rasbian NTP Server
 ==================
 
@@ -16,107 +17,87 @@ required for setup (i.e. keyboard, mouse, monitor).
     * CR1220 Lithium Coin Cell Battery 3V
     * SMA to uFL/u.FL/IPX/IPEX RF Adapter Cable
     * GPS Antenna, External, Active, 3-5V 28dB 5m SMA
+* Optional components for clock display:
+    * [Adafruit 1.2" 4-Digit 7-Segment Display w/I2C Backpack - Red](https://www.adafruit.com/product/1270)
+    * [Adafruit 0.56" 4-Digit 7-Segment Display w/I2C Backpack - Red](https://www.adafruit.com/product/878)
 
 ### Setup
 
 #### Assembly
 
+This diagram applies to the newer Pi Model 3 B+, and the original hardware
+used for this project, the Pi Model 1 B+:
+
 ![Hardware diagram](images/hardware-diagram.png)
 
-#### SD Card Prep
+**TODO** add diagram for clock display components, and include
+usage of prototyping board
 
-This project is based on [Raspbian Jessie Lite](https://www.raspberrypi.org/downloads/raspbian/),
-release date Nov 21, 2015. The Lite distribution is more appropriate for
-an embedded system because it doesn't have a graphical desktop.
 
-With a prepared SD card, preform initial OS configuration as necessary.
-Then, use `raspi-config` to set the following under *Advanced Options*:
-* Enable Device Tree (for pulse-per-second support)
-* Disable serial shell/kernel messages (to repurpose UART for the GPS)
+#### O/S Setup
 
-Next fetch and apply system updates:
-````
-sudo apt-get update
-sudo apt-get dist-upgrade -y
-````
-````
-sudo reboot
-````
+> Previously, this project used `ntpd` on *Raspbian Jessie*. Instructions
+> are still provided for reference purposes [here](raspbian-jessie.md).
 
-#### Install Packages
+The latest version of this project is based on [Ubuntu Mate 16.04 LTS](ubuntu-mate.org)
+with `chrony` and `gpsd`.
 
-You will need
+The stock configuration for Raspberry Pi Model 3 B+ hardware is to present a login over
+the hardware serial port, and to use the hardware uart to support Bluetooth connections
+To enable the hardware serial port for use with the GPS receiver, first disable the login:
+```
+sudo raspi-config
+```
+```
+Interfacing Options > Serial
+```
+* Would you like a login shell to be accessible over serial? **No**
+* Would you like the serial port hardware to be enabled? **Yes**
 
-* **pps-tools** for PPS support & testing
-* **libcap-dev** and **libssl-dev** for rebuilding NTP
+#### Enable required kernel modules
 
-but not any GPS-related utilities (gpsd, ..) because NTP will listen to the
-GPS receiver directly. 
-
-````
-sudo apt-get install pps-tools libcap-dev libssl-dev
-````
-
-#### Enable Kernel Modules
-
-The GPS receiver provides a pulse-per-second (PPS) signal for enhanced
-precision. In early 2015, kernel support for PPS via GPIO pins was added
-and with Device Tree in Raspbian Jessie, PPS is pretty smoothly integrated.
-Just add the overlay statement to `/boot/config.txt`:
-````
+```
 sudo nano /boot/config.txt
-````
-````diff
+```
+```diff
  ...
++
++# Reclaim hardware UART for hardware serial port
++dtoverlay=pi3-miniuart-bt
++
 +## pps-gpio
 +##     Enable kernel support for GPS receiver pulse-per-second (PPS) input
 +dtoverlay=pps-gpio
-````
-````
+```
+```
 sudo reboot
-````
+```
 
-By default, this enables PPS support on GPIO (BCM) 18 and creates a
-device `/dev/pps0`. If you want to use a different pin, use the `gpiopin`
-argument and Broadcom (GPIO) [pin number](http://pinout.xyz) (for example):
-````
-dtoverlay=pps-gpio,gpiopin=23
-````
+#### Test the GPS connection
 
-#### Test PPS Support
+First, the serial port data stream:
+```
+sudo cat /dev/serial0
+```
 
-Now you can check the PPS signal using the `ppstest` command. Before you
-do, ensure the GPS has signal lock (slow ~15sec LED flashes) because it
-won't provide a PPS signal without full lock.
+Next, the PPS input connection:
+> Ensure the GPS has signal lock (slow ~15sec LED flashes) because it
+> will not provide a PPS signal without full signal lock.
 
-````
+```
+sudo apt-get install pps-tools -y
+```
+```
 sudo ppstest /dev/pps0
-````
-````
+```
+```
 trying PPS source "/dev/pps0"
 found PPS source "/dev/pps0"
 ok, found 1 source(s), now start fetching data...
-source 0 - assert 1450338134.999993693, sequence: 97362 - clear 0.0000000000, sequence: 0
-source 0 - assert 1450338135.999994591, sequence: 97363 - clear 0.0000000000, sequence: 0
-source 0 - assert 1450338136.999994489, sequence: 97364 - clear 0.0000000000, sequence: 0
-````
-
-#### Symlink GPS
-
-The NTP driver expects to listen to `/dev/gps0` and `/dev/gpspps0` so we
-create permanent symlinks with some udev rules. 
-````
-sudo nano /etc/udev/rules.d/10-pps.rules
-````
-````
-KERNEL=="ttyAMA0", SUBSYSTEM=="tty", GROUP="dialout", MODE="0660", SYMLINK+="gps0"
-KERNEL=="pps0", SUBSYSTEM=="pps", GROUP="dialout", MODE="0660", SYMLINK+="gpspps0"
-````
-
-Reboot and test the new symlinks:
-
-* `cat /dev/gps0`
-* `sudo ppstest /dev/gpspps0`
+source 0 - assert 1455208600.181885044, sequence: 480 - clear  0.000000000, sequence: 0
+source 0 - assert 1455208601.265220834, sequence: 481 - clear  0.000000000, sequence: 0
+source 0 - assert 1455208602.348548499, sequence: 482 - clear  0.000000000, sequence: 0
+```
 
 #### Configure GPS module
 
@@ -127,137 +108,100 @@ To disable all but the Recommended Minimum GPS data sentence (GPRMC), issue the
 `PMTK314` command as described in the 
 [command packet](https://www.adafruit.com/datasheets/PMTK%20command%20packet-Complete-C39-A01.pdf)
 (pg 12). 
-````
-sudo crontab -e
-````
-````
-@reboot echo -e '$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n' > /dev/gps0
-````
+```
+sudo bash -c "echo -e '$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n' > /dev/gps0"
+```
 
-#### Remove DHCP Hook
+Optionally ensure any future re-configuration is handled automatically by adding
+a daily crontab entry:
+```
+sudo crontab -e
+```
+```diff
+ ...
++# send modem configuration string everyday at noon (@reboot simply does not work)
++0 12 * * * echo -e '$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n' > /dev/serial
+```
+
+#### Remove DHCP hook
+
+> TODO: determine if still relevant - wasn't it for ntp?
 
 To prevent the Pi from getting NTP configuration from the router, 
 remove `ntp-servers` from the end of the `request` block:
-````
+```
 sudo nano /etc/dhcp/dhclient.conf
-````
-````diff
+```
+```diff
  ...
  request subnet-mask, broadcast-address, time-offset, routers,
          ...
 -        rfc3442-classless-static-routes, ntp-servers;
 +        rfc3442-classless-static-routes;
  ...
-````
+```
 
-#### Rebuild NTP
+#### Install `gpsd`
 
-The repository version (4.2.6.p5+dfsg-7+deb8u1) is out-of-date and lacks
-PPS support. It's easy enough to download the latest version and build it. 
-Start by getting the required libraries:
+```
+sudo apt-get install gpsd gpsd-clients -y
+```
 
-````
-sudo apt-get install libcap-dev libssl-dev
-````
+Update config file:
+```
+sudo nano /etc/default/gpsd
+```
+```diff
+-DEVICES=""
++DEVICES="/dev/serial0"
 
-Then download the [latest version of NTP](http://archive.ntp.org/ntp4/ntp-4.2)
-and unzip it. (At I write this, it's 4.2.8p4 - editor's note: as of Jan 29, 2019
-latest version is 4.2.8p12) 
+ # Other options you want to pass to gpsd
+-GPSD_OPTIONS=""
++GPSD_OPTIONS="-n"
+```
 
-````
-wget http://archive.ntp.org/ntp4/ntp-4.2/ntp-4.2.8p4.tar.gz
-tar xvzf ntp-4.2.8p4.tar.gz
-... lots of output...
-````
-````
-cd ntp-4.2.8p4
-````
+Reboot, then test:
+```
+gpsmon -n
+```
 
-These first two next steps take roughly 10 and 20 minutes to complete,
-respectively. The `--enable-linuxcaps` flag is required. After the build 
-is finished, the new NTP executables are installed (for your user), the 
-system NTP is stopped and then we copy the newly built versions over it.
+#### Install `chrony`
 
-````
-./configure --enable-linuxcaps
-...lots of output...
-````
-````
-make
-...lots of output...
-````
-````
-sudo make install
-...lots of output...
-````
-````
-sudo service ntp stop
-sudo cp /usr/local/bin/ntp* /usr/bin/
-sudo cp /usr/local/sbin/ntp* /usr/sbin/
-````
+In latest versions of Raspbian, *ntp* is replaced by a client-only 
+*systemd* NTP implementation. Disable it and install *chrony* instead:
+```
+sudo systemctl stop prefer-timesyncd.service
+sudo systemctl disable prefer-timesyncd.service
+sudo apt-get install chrony -y
+```
 
-To check that things are working, reboot and look over the boot-up output
-for warnings or errors from NTP. Then login and check the running version:
+And configure for use with GPS device:
+> **TODO** May need to rebuild chrony to include PPS support
 
-````
-ntpq --version
-ntpq 4.2.8p4@1.3265 Tue Dec 15 17:42:50 UTC 2015 (1)
-````
+```
+sudo nano /etc/chrony/chrony.conf
+```
+```diff
++refclock SHM 0 offset 0 delay delay 0 refid GPS noselect
++refclock PPS /dev/pps0 lock GPS refid GPPS
+ pool 2.debian.pool.ntp.org offline iburst
+```
 
-#### Configure NTP
+At this point, test the time synchronization using:
+* `chronyc tracking`
+* `chronyc sources -v`
+* `chronyc sourcestats -v`
 
-Finally, modify the NTP configuration to use the local GPS+PPS:
-`sudo nano /etc/ntp.conf`
+If necessary, apply a step-change to system clock:
+> The `-a` argument is required in older versions to prevent an error.
 
-````
-server 127.127.20.0 mode 17 prefer
-fudge 127.127.20.0 flag1 1 time2 0.350 refid GPPS
-````
+```
+sudo chronyc -a makestep
+```
+ 
 
-* The odd-looking IP address specifies a [generic NMEA][url-nmea20] driver
-  with the local device `/dev/gps0`. 
-* `mode` accepts a bitmask: 0x01 (1) to only process $GPRMC sentences and 
-  0x10 (16) for 9600 bps baud rate.
-* `prefer` gives higher weight to the GPS; it isn't strictly necessary
-* `flag1 1` enables PPS processing; it's required
-* `time2 0.350` specifies the serial end of line time offset (seconds); it's
-  just a rough value used to disambiguate the PPS edge timing
-* `refid GPPS` is a tweak of the default refid `GPS` to indicate PPS support
 
-These flags are not required because you use the default values:
 
-* `flag2`: capture of PPS on the rising (0, default) or falling (1) edge  
-  *GlobalTop states PPS output is rising edge [2013-10-18 13:19][url-ppse]*
-* `flag3`: for PPS, use ntpd clock (0, default) or kernel (1) discipline  
-  *Linux PPS expects ntpd clock discipline, not kernel (hardpps)
-  discipline [2013-10-16 19:24][url-ppsd]*
-
-  [url-nmea20]: https://www.eecis.udel.edu/~mills/ntp/html/drivers/driver20.html
-  [url-ppse]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
-  [url-ppsd]: https://www.raspberrypi.org/forums/viewtopic.php?f=41&t=1970&start=225
-
-NTP requires multiple servers to determine the time and recognize bad clocks.
-Your file should specify a few other sources, optionally with the `iburst`
-argument to speed up initialization (recommended). This argument isn't
-available for the GPS.
-
-> *The `pool` directive is often recommended but didn't work for me.*
-
-````
-server 0.us.pool.ntp.org iburst
-server 1.us.pool.ntp.org
-server 2.us.pool.ntp.org
-server 3.us.pool.ntp.org
-````
-
-### Further Tuning
-
-There's two other kernel tweaks to consider for improved/more stable
-performance. To enable, add to new lines in `/boot/config.txt`.
-
-* `force_turbo=1` Disables dynamic clocking, so NTP needs to react less
-* `smsc95xx.turbo_mode=0` Reduces Ethernet latency by doing something to
-  decouple it from the USB
 
 ### References
 
@@ -272,6 +216,11 @@ In no particular order, and possibly not comprehensively:
 * https://www.eecis.udel.edu/~mills/ntp/html/refclock.html
 * https://www.raspberrypi.org/forums/viewtopic.php?f=9&t=1970
 * http://open.konspyre.org/blog/2012/10/18/raspberry-flavored-time-a-ntp-server-on-your-pi-tethered-to-a-gps-unit/
+* https://spellfoundry.com/2016/05/29/configuring-gpio-serial-port-raspbian-jessie-including-pi-3/
+* https://chrony.tuxfamily.org/doc/3.4/chrony.conf.html
+* http://robotsforroboticists.com/chrony-gps-for-time-synchronization/
+
+
 
 ### Enable SAMBA support
 
