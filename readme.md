@@ -228,9 +228,47 @@ sudo nano /etc/chrony/chrony.conf
  refclock PPS /dev/pps0 lock GPS refid GPPS
 ```
 
+Although recommended, the `makestep` directive is not included in the
+default *chrony* configuration file. Manually add it:
+```
+sudo nano /etc/chrony/chrony.conf
+```
+```diff
+ ...
++# Step the clock, if necessary, for a short window after starting
++#
++
++makestep 1 5
+```
+
+#### Serving time to clients
+
+Finally, to enable this device as an NTP server, add `allow` directives
+to `/etc/chrony/chrony.conf` as appropriate. See the [user
+documentation](https://chrony.tuxfamily.org/doc/3.4/chrony.conf.html)
+for more details.
+
+Example, to permit all clients from local subnet 192.168.1.x:
+```
+sudo nano /etc/chrony/chrony.conf
+```
+```diff
+ ...
+ # This directive designates subnets (or nodes) from which NTP clients are allowed
+ # to access to `chronyd'.
+
++# allow everyone on home network
++allow 192.168.1.0/24
+
+ #allow foo.example.net
+ #allow 10/8
+ ...
+```
+
 
 ### References
 
+* https://powersj.github.io/post/ubuntu-bionic-chrony/
 * https://spellfoundry.com/2016/05/29/configuring-gpio-serial-port-raspbian-jessie-including-pi-3/
 * https://chrony.tuxfamily.org/doc/3.4/chrony.conf.html
 * http://robotsforroboticists.com/chrony-gps-for-time-synchronization/
