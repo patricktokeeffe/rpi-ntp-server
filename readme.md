@@ -265,6 +265,19 @@ sudo nano /etc/chrony/chrony.conf
  ...
 ```
 
+#### Enable standalone mode
+
+In case the server loses GPS and Internet access, but network
+clients are still attempting to sync, use the local hardware
+clock as a last resort source:
+```
+sudo nano /etc/chrony/chrony.conf
+```
+```diff
+-#local stratum 10
++local stratum 10
+```
+
 
 ### References
 
